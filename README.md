@@ -23,11 +23,23 @@ A distributed embedded system for automated 360° image acquisition of plant roo
 
 ```
 root-scanner/
-├── scan.py           # Main scan controller — runs on Controller Pi only
-└── img_capture.py    # Camera capture script — deployed identically on both Pis
+├── README.md
+├── scan.py
+├── img_capture.py
+└── tests/
+    ├── test_arducam.py
+    └── tune_focus.py
 ```
 
 ---
+## Test Scripts
+
+Located in the `tests/` folder — used during development and hardware debugging.
+
+| Script | Purpose |
+|--------|---------|
+| `test_arducam.py` | Captures all 4 cameras on a single Pi and saves images — used to verify camera quality and mux switching before running a full scan |
+| `tune_focus.py` | Tests lens positions from 2.0 to 8.0 on cameras 1 and 3 to find the sharpest manual focus value at the 40cm working distance |
 
 ## How It Works
 
