@@ -1,28 +1,20 @@
-# 360° Root Phenotyping Scanner
+# Automated 360° Imaging System using Raspberry Pi & Arducam UC512
 
-An automated imaging system for capturing high-resolution 360° photographs of plant structures using dual Raspberry Pi microcontrollers and 8 synchronized cameras.
+A distributed embedded system for automated 360° image acquisition of plant root structures using dual Raspberry Pi 4B microcontrollers, 8x 16MP autofocus cameras, and a GPIO-controlled stepper motor.
 
 ---
 
-## System Overview
+## Hardware
 
-The system's frame rotates using a stepper motor and captures 8 images from each angle simultaneously at each position producing a full 360° image dataset for a 3D reconstruction of the plant structure.
-
-**Hardware:**
-- 2x Raspberry Pi 4B (Controller + Secondary)
-- 2x Arducam UC512 Quad-Camera Multiplexer HATs
-- 8x Arducam IMX519 16MP Autofocus Camera Modules
-- Stepper motor (GPIO controlled, 240,000 steps/rev)
-- Direct ethernet connection between Pis
-- Digital display connected to one of the raspberry pi.
-
-**How it works:**
-1. Run `scan.py -n 5` on the controller Pi
-2. Controller captures 4 images from its cameras
-3. Controller SSHes to secondary Pi and triggers 4 more images
-4. Stepper motor rotates to next position
-5. Repeat for all positions
-6. All images transferred to controller and saved in a dated folder, on completion all the images in teh secondary pi is deleted
+| Component | Details |
+|-----------|---------|
+| Controller Pi | Raspberry Pi 4B — IP: 192.168.1.5 |
+| Secondary Pi | Raspberry Pi 4B — IP: 192.168.1.6 |
+| OS | Raspberry Pi OS Bookworm (64-bit) |
+| Camera HAT | Arducam UC512 Quad-Camera Multiplexer (x2) |
+| Cameras | 8x Arducam IMX519 16MP Autofocus Modules (4 per Pi) |
+| Stepper Motor | GPIO controlled — DIR pin 27, STEP pin 17 — 240,000 steps/rev |
+| Connection | Direct ethernet cable between both Pis |
 
 ---
 
@@ -30,70 +22,175 @@ The system's frame rotates using a stepper motor and captures 8 images from each
 
 ```
 root-scanner/
-├── original_code/       # Original scripts (with documented bugs)
-│   ├── main.py
-│   ├── img_capture.py
-│   └── img_transfer.py
-├── improved_code/       # Rewritten scripts (production ready)
-    ├── scan.py
-    └── img_capture.py
-
+├── scan.py           # Main scan controller — runs on Controller Pi only
+└── img_capture.py    # Camera capture script — deployed identically on both Pis
 ```
 
 ---
 
-## Why the Code Was Rewritten
+## How It Works
 
-The original code had several critical bugs that prevented the system from working correctly. Here is a comparison:
+### scan.py — Main Controller Script
 
-| Issue | Original Code | Improved Code |
-|-------|--------------|---------------|
-| **Image transfer path** | SCP looked in `/home/pi/code/*/*.jpg` but images saved to `/home/pi/image_data/` — nothing ever transferred | Correct paths used throughout, images reliably transferred after every scan |
-| **Save path ignored** | `img_capture.py` always saved to `os.getcwd()/image_data/` regardless of argument passed — unpredictable via SSH | Save path passed as explicit argument `--save_path`, always saved to correct location |
-| **Images deleted each cycle** | `img_cap_remote.sh` ran `rm -rf` at start of every cycle — only the last cycle's images survived | No deletion — all images from all positions accumulated safely |
-| **i2cset path** | Called as `i2cset` — not found in SSH sessions where `/usr/sbin` is not in PATH | Full path `/usr/sbin/i2cset` used in all scripts |
-| **No retry on failure** | On capture failure, scan position silently skipped with no retry | Failures logged clearly with position tracking |
-| **Image naming** | Timestamp-only filenames with no position or Pi ID — impossible to sort | Clear naming: `controller_pos02_cam3_2026-04-11.jpg` |
-| **Autofocus approach** | Each camera opened and closed separately — VCM driver lost context on mux switch | `picamera2` kept open continuously, mux switches while camera runs (Arducam reference approach) |
-| **Manual exposure** | Not set — inconsistent brightness across cameras | Fixed `ExposureTime=15000`, `AnalogueGain=0.8` for consistent images |
+Run on the Controller Pi with the number of scan positions as argument:
 
----
-
-## Usage
-
-### Requirements
-Both Pis must have:
-- Raspberry Pi OS Bookworm (64-bit)
-- `picamera2`, `opencv-python` installed
-- `ak7375` VCM driver loaded: `echo "ak7375" | sudo tee /etc/modules-load.d/ak7375.conf`
-- Passwordless SSH from controller to secondary Pi
-- `/boot/firmware/config.txt`: `camera_auto_detect=0` and `dtoverlay=imx519`
-
-### Run a Scan
 ```bash
-# On controller Pi:
-python3 /home/pi/code/scan.py -n 5
-# -n = number of positions (5 positions = 72° per step = full 360°)
+python3 scan.py -n 5
 ```
 
-Images saved to: `/home/pi/scans/YYYY-MM-DD/`
+This performs a full 360° scan in 5 steps(can be changed based on the no of angles required). For each position it:
 
-### Test Single Pi Cameras
+1. Calls `img_capture.py` locally to capture 4 images from the Controller Pi cameras
+2. SSHes into the Secondary Pi and calls `img_capture.py` remotely to capture 4 more images
+3. Moves the stepper motor to the next position
+
+After all positions are complete:
+
+4. Transfers all images from Secondary Pi to Controller Pi via SCP
+5. Cleans up temporary images on Secondary Pi
+6. Saves everything to `/home/pi/scans/YYYY-MM-DD/` with a clear naming convention
+
+**Image naming convention:**
+```
+controller_pos02_cam3_2026-04-11-14-32-01.jpg
+secondary_pos02_cam3_2026-04-11-14-32-05.jpg
+```
+
+**Key parameters inside scan.py:**
+```python
+SECONDARY_IP    = '192.168.1.6'
+SECONDARY_USER  = 'pi'
+SECONDARY_SAVE  = '/home/pi/scan_images'
+CONTROLLER_SAVE = '/home/pi/scans'
+CAPTURE_SCRIPT  = '/home/pi/code/img_capture.py'
+DIR_PIN         = 27
+STEP_PIN        = 17
+STEPS_PER_REV   = 25 * 9600   # 240,000 steps per full revolution
+```
+
+---
+
+### img_capture.py — Camera Capture Script
+
+Deployed identically on both Pis. Called by `scan.py` with arguments:
+
 ```bash
-python3 /home/pi/code/img_capture.py --save_path /home/pi/test --pi_id controller --position 0
+python3 img_capture.py --save_path /home/pi/scans/2026-04-11 --pi_id controller --position 2
+```
+
+**Key design decisions:**
+
+**1. picamera2 initialized once and kept open**
+
+The camera instance is started once and remains open for all 4 captures. The Arducam UC512 mux is switched while the camera stays running. This is critical — opening and closing the camera between switches causes the AK7375 VCM driver to lose context with the camera lens motor on subsequent ports.
+
+```python
+picam2 = Picamera2()
+picam2.configure(config)
+picam2.set_controls({...})
+picam2.start()
+
+for cam_index in range(4):
+    subprocess.run(MUX_COMMANDS[cam_index], shell=True)  # switch mux
+    time.sleep(2)                                         # allow mux to settle
+    frame = picam2.capture_array()                        # capture frame
+    cv2.imwrite(filepath, frame)                          # save image
+
+picam2.stop()
+```
+
+**2. Manual exposure for consistency**
+
+Auto exposure is disabled so all 8 cameras produce images with identical brightness regardless of slight lighting differences between camera positions:
+
+```python
+picam2.set_controls({
+    "AfMode":       0,        # Manual focus mode
+    "LensPosition": 4.0,      # Fixed focus at ~40cm working distance
+    "AeEnable":     False,    # Manual exposure
+    "ExposureTime": 15000,    # Microseconds
+    "AnalogueGain": 0.8,
+})
+```
+
+**3. Full path for i2cset**
+
+SSH sessions do not include `/usr/sbin` in PATH by default. All mux switch commands use the full binary path to ensure they work both locally and when called remotely:
+
+```python
+MUX_COMMANDS = {
+    0: "/usr/sbin/i2cset -y 10 0x24 0x24 0x02",
+    1: "/usr/sbin/i2cset -y 10 0x24 0x24 0x12",
+    2: "/usr/sbin/i2cset -y 10 0x24 0x24 0x22",
+    3: "/usr/sbin/i2cset -y 10 0x24 0x24 0x32",
+}
 ```
 
 ---
 
-## Known Issue — Autofocus on Camera Ports 1 & 3
+## Setup & Requirements
 
-Cameras connected to ports 1 and 3 of the UC512 HAT do not autofocus correctly — the lens position gets stuck at maximum (lp=12) instead of finding focus at ~40cm (lp~3.5). Cameras on ports 0 and 2 autofocus correctly.
+### Both Pis
 
-**Diagnosis:** The AK7375 VCM driver initializes at boot for the first camera (port 0). When the mux switches to ports 1 and 3, the VCM driver loses I2C communication with those cameras' lens motors — confirmed by monitoring `lp=%lp` in `rpicam-hello`.
+```bash
+# Install dependencies
+pip3 install picamera2 opencv-python
 
-**Current workaround:** Fixed manual focus at `LensPosition=4.0` for all cameras — provides acceptable sharpness at 40cm scanning distance.
+# Load AK7375 VCM autofocus driver permanently
+echo "ak7375" | sudo tee /etc/modules-load.d/ak7375.conf
 
-**Status:** Arducam support contacted. Awaiting firmware fix for UC512 HAT VCM routing on odd-numbered ports.
+# /boot/firmware/config.txt settings
+camera_auto_detect=0
+dtoverlay=imx519
+dtparam=i2c_arm_baudrate=25000
+```
+
+### Controller Pi — Passwordless SSH to Secondary
+
+```bash
+ssh-keygen -t rsa
+ssh-copy-id pi@192.168.1.6
+```
+
+### Static IP (both Pis — add to /etc/network/interfaces)
+
+```
+# Controller Pi:
+auto eth0
+iface eth0 inet static
+    address 192.168.1.5
+    netmask 255.255.255.0
+
+# Secondary Pi:
+auto eth0
+iface eth0 inet static
+    address 192.168.1.6
+    netmask 255.255.255.0
+```
+
+### Deploy capture script to Secondary Pi
+
+```bash
+scp img_capture.py pi@192.168.1.6:/home/pi/code/img_capture.py
+```
 
 ---
+
+## Output
+
+All images saved to `/home/pi/scans/YYYY-MM-DD/` on the Controller Pi.
+
+For a 5-position scan: **40 images total** (8 cameras x 5 positions)
+
+```
+/home/pi/scans/2026-04-11/
+├── controller_pos00_cam0_2026-04-11-14-30-01.jpg
+├── controller_pos00_cam1_2026-04-11-14-30-04.jpg
+├── controller_pos00_cam2_2026-04-11-14-30-07.jpg
+├── controller_pos00_cam3_2026-04-11-14-30-10.jpg
+├── secondary_pos00_cam0_2026-04-11-14-30-15.jpg
+├── secondary_pos00_cam1_2026-04-11-14-30-18.jpg
+...
+```
+
 
