@@ -14,6 +14,7 @@ A distributed embedded system for automated 360° image acquisition of plant roo
 | Camera HAT | Arducam UC512 Quad-Camera Multiplexer (x2) |
 | Cameras | 8x Arducam IMX519 16MP Autofocus Modules (4 per Pi) |
 | Stepper Motor | GPIO controlled — DIR pin 27, STEP pin 17 — 240,000 steps/rev |
+| Real-time Display | Terminal progress output — position count, images captured, transfer status | 
 | Connection | Direct ethernet cable between both Pis |
 
 ---
