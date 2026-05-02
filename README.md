@@ -6,7 +6,7 @@ An automated imaging system for capturing high-resolution 360° photographs of p
 
 ## System Overview
 
-This system rotates using a stepper motor and captures 8 images from 30 angles simultaneously at each position producing a full 360° image dataset for 3D reconstruction of the plant structure.
+The system's frame rotates using a stepper motor and captures 8 images from each angle simultaneously at each position producing a full 360° image dataset for a 3D reconstruction of the plant structure.
 
 **Hardware:**
 - 2x Raspberry Pi 4B (Controller + Secondary)
