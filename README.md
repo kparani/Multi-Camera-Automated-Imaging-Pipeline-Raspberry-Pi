@@ -193,5 +193,16 @@ For a 5-position scan: **40 images total** (8 cameras x 5 positions)
 ├── secondary_pos00_cam1_2026-04-11-14-30-18.jpg
 ...
 ```
+## Real-Time Terminal Display
+
+During every scan the terminal updates live after each position showing:
+
+- Current position number and total positions remaining
+- Images successfully captured on Controller Pi and Secondary Pi
+- Transfer status of Secondary Pi images
+- Any failed captures with exact camera and position details
+- Final summary — total images collected vs expected
+
+This gives full visibility into scan progress across both devices without needing to check either Pi individually.
 
 
