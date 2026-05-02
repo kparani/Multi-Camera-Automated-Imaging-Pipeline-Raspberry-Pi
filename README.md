@@ -14,7 +14,7 @@ The system's frame rotates using a stepper motor and captures 8 images from each
 - 8x Arducam IMX519 16MP Autofocus Camera Modules
 - Stepper motor (GPIO controlled, 240,000 steps/rev)
 - Direct ethernet connection between Pis
-- Digital display connecetd to one of the raspberry pi.
+- Digital display connected to one of the raspberry pi.
 
 **How it works:**
 1. Run `scan.py -n 5` on the controller Pi
